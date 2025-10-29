@@ -11,8 +11,29 @@
   <p>This page probes for common JS bridge objects used by the app and logs results below. It does not send data anywhere.</p>
   <button id="run">Run Probe</button>
   <button id="deepRun" title="Manual deep probe; may exercise additional native handlers">Deep Probe (manual)</button>
+  <button id="duibaRun" title="Manual duiba probes; non-destructive by default">Probe duiba_app (manual)</button>
   <pre id="out">Ready. Click “Run Probe”.
 </pre>
+
+  <div style="margin-top:12px;padding:8px;border:1px solid #ddd;border-radius:6px">
+    <h3 style="margin:6px 0">duiba_app manual tester (safe)</h3>
+    <p style="margin:6px 0">This section lets you call safe duiba_app methods and optionally test <code>launchActivity</code> with a pasted JSON payload. Do not run on production devices unless you understand the effects.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <button id="duiba_gets">getFromAppCode / getFromPkgName</button>
+      <button id="duiba_copy">copyCode('poc-clipboard') (checks clipboard locally)</button>
+      <button id="duiba_login">login()</button>
+      <button id="duiba_render">renderMenu('{}')</button>
+    </div>
+    <div style="margin-top:8px">
+      <label for="duiba_launch_input">launchActivity payload (JSON)</label><br>
+      <textarea id="duiba_launch_input" style="width:100%;height:90px;box-sizing:border-box" placeholder='{"linkType":"NATIVE","linkUrl":"app://some","multiplePackages":[]}'>
+      </textarea>
+      <div style="margin-top:6px;display:flex;gap:8px">
+        <button id="duiba_launch">Run launchActivity (requires confirm)</button>
+        <button id="duiba_launch_preset" title="Insert a harmless preset example">Insert preset example</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     (function(){
@@ -141,14 +162,29 @@
       // Run automatically shortly after load (helps when WebView injects interfaces after page load)
       window.addEventListener('load', function(){ setTimeout(probeAll, 500); });
 
-      // Deep manual probe: tries a few common invocation shapes for HeytapNativeApi.
+      // Install a safe window.HeytapJsApi.callback handler so native callbacks can be observed by this page.
+      try{
+        window.HeytapJsApi = window.HeytapJsApi || {};
+        window.HeytapJsApi.callback = function(callbackId, data){
+          try{
+            log('HeytapJsApi.callback -> ' + callbackId + ' : ' + (typeof data === 'string' ? data : JSON.stringify(data)));
+          }catch(e){
+            log('HeytapJsApi.callback JSON stringify error: ' + e);
+          }
+        };
+        // optional broadcastReceiver shim (some native code may call this pattern)
+        window.HeytapJsApi.broadcastReceiver = window.HeytapJsApi.broadcastReceiver || function(cbId, data){
+          log('HeytapJsApi.broadcastReceiver -> ' + cbId + ' : ' + JSON.stringify(data));
+        };
+      }catch(e){ log('install callback handler failed: ' + e); }
+
+      // Deep manual probe: tries safe, correct-shaped invocation patterns for HeytapNativeApi.
       function deepProbe(){
         out.textContent += '\n\n=== Deep Probe (manual) ===';
         const obj = window.HeytapNativeApi || window['HeytapNativeApi'.replace(/\W/g,'')];
         if(!obj){ log('HeytapNativeApi not present — cannot deep probe'); return; }
 
-        // Helper: safe call for a named function on the object
-        function tryCall(fnName, args){
+        function safeTry(fnName, args){
           try{
             if(typeof obj[fnName] !== 'function'){
               log(fnName + ' not present');
@@ -161,47 +197,127 @@
           }
         }
 
-        // Non-destructive probes — these try to reveal schema/returns without issuing destructive commands.
-        tryCall('invoke', ['getToken']);
-        tryCall('invoke', ['getAccessToken']);
-        tryCall('invoke', ['getUserInfo']);
-        tryCall('invoke', []);
+        // Prepare callback ids that the native layer will call via window.HeytapJsApi.callback(callbackId, data)
+        const cb1 = 'probe_cb_getToken_' + Date.now();
+        const cb2 = 'probe_cb_getAccessToken_' + Date.now();
+        const cbBatch = 'probe_cb_batch_' + Date.now();
+        const cbBrc = 'probe_cb_brc_' + Date.now();
+
+        log('Deep probe: invoking with callback ids: ' + cb1 + ', ' + cb2 + ', ' + cbBatch);
+
+        // 1) invoke with explicit args: (methodName, argumentsJsonString|null, callbackId)
+        // Use null for no args when supported.
         try{
-          // Try JSON payload shape
           if(typeof obj.invoke === 'function'){
-            try{
-              const r = obj.invoke(JSON.stringify({action:'probe', args:[]}));
-              log('invoke(JSON) => ' + (r === undefined ? '(undefined)' : String(r)));
-            }catch(e){ log('invoke(JSON) ERROR: ' + e); }
-          }
-        }catch(e){ log('invoke(JSON) ERROR: ' + e); }
-
-        // invokeBatch if present
-        tryCall('invokeBatch', [['getToken','getUserId']]);
-
-        // broadcast (best-effort; may trigger app behavior) — still logged only
-        tryCall('broadcast', ['probe_event']);
-
-        // register a JS callback function and attempt to register it with native side
-        window.probeCallback = function(data){ log('probeCallback invoked by native with: ' + JSON.stringify(data)); };
-        try{
-          if(typeof obj.registerBroadcastReceiver === 'function'){
-            try{
-              // Many register APIs expect (action, callbackName) or (callbackName). Try safe shapes.
-              tryCall('registerBroadcastReceiver', ['probe_channel','probeCallback']);
-              tryCall('registerBroadcastReceiver', ['probeCallback']);
-            }catch(e){ log('registerBroadcastReceiver ERROR: ' + e); }
+            safeTry('invoke', ['getToken', null, cb1]);
+            safeTry('invoke', ['getAccessToken', null, cb2]);
           } else {
-            log('registerBroadcastReceiver not present');
+            log('invoke not present');
+          }
+        }catch(e){ log('invoke overall ERROR: ' + e); }
+
+        // 2) invokeBatch with a JSON array string of {method, arguments, callback_id}
+        try{
+          if(typeof obj.invokeBatch === 'function'){
+            const batch = [
+              {method: 'getToken', arguments: {}, callback_id: cbBatch + '_1'},
+              {method: 'getUserId', arguments: {}, callback_id: cbBatch + '_2'}
+            ];
+            safeTry('invokeBatch', [JSON.stringify(batch)]);
+          } else {
+            log('invokeBatch not present');
+          }
+        }catch(e){ log('invokeBatch ERROR: ' + e); }
+
+        // 3) registerBroadcastReceiver(action, callbackId) then send a broadcast to trigger it.
+        try{
+          if(typeof obj.registerBroadcastReceiver === 'function' && typeof obj.broadcast === 'function'){
+            const action = 'probe_channel_' + Date.now();
+            safeTry('registerBroadcastReceiver', [action, cbBrc]);
+            // Give native a moment to register, then send a broadcast with an empty object payload.
+            setTimeout(function(){
+              try{ safeTry('broadcast', [action, '{}']); }catch(e){ log('broadcast call failed: ' + e); }
+            }, 300);
+          } else {
+            log('registerBroadcastReceiver or broadcast not present');
           }
         }catch(e){ log('registerBroadcastReceiver overall ERROR: ' + e); }
 
-        // mark button disabled after run
+        // mark button disabled after run to avoid accidental repeats
         try{ document.getElementById('deepRun').disabled = true; }catch(e){}
-        out.textContent += '\n=== Deep Probe finished ===\n';
+        out.textContent += '\n=== Deep Probe (manual) issued (await callbacks) ===\n';
       }
 
       document.getElementById('deepRun').addEventListener('click', deepProbe);
+
+      // ------ duiba_app manual probes ------
+      function getDuibaObj(){
+        return window.duiba_app || window['duiba_app'.replace(/\W/g,'')];
+      }
+
+      function safeDuibaTry(fnName, args){
+        const obj = getDuibaObj();
+        if(!obj){ log('duiba_app not present'); return; }
+        try{
+          if(typeof obj[fnName] !== 'function'){
+            log('duiba_app.' + fnName + ' not present');
+            return;
+          }
+          const r = obj[fnName].apply(obj, args || []);
+          log('duiba_app.' + fnName + '(' + JSON.stringify(args || []) + ') => ' + (r === undefined ? '(undefined)' : String(r)));
+        }catch(e){ log('duiba_app.' + fnName + ' ERROR: ' + e); }
+      }
+
+      document.getElementById('duibaRun').addEventListener('click', function(){
+        document.getElementById('duiba_gets').focus();
+        log('\n--- duiba_app manual tester (ready) ---');
+      });
+
+      document.getElementById('duiba_gets').addEventListener('click', function(){
+        // Non-destructive getters
+        try{
+          const obj = getDuibaObj();
+          if(!obj){ log('duiba_app not present'); return; }
+          // Attempt to call getters and log results
+          ['getFromAppCode','getFromPkgName'].forEach(fn => {
+            try{ if(typeof obj[fn] === 'function'){ const r = obj[fn](); log(fn + ' => ' + (r===undefined? '(undefined)': String(r))); } else { log(fn + ' not present'); } }catch(e){ log(fn + ' ERROR: ' + e); }
+          });
+        }catch(e){ log('duiba_gets ERROR: ' + e); }
+      });
+
+      document.getElementById('duiba_copy').addEventListener('click', function(){
+        // copyCode is expected to copy to clipboard on device; we cannot read clipboard from this page reliably.
+        safeDuibaTry('copyCode', ['poc-clipboard']);
+        log('Note: check device clipboard manually after running this.');
+      });
+
+      document.getElementById('duiba_login').addEventListener('click', function(){
+        // login() typically triggers the app login flow
+        if(!confirm('duiba_app.login() may open a login UI. Run only on a test device. Continue?')) return;
+        safeDuibaTry('login', []);
+      });
+
+      document.getElementById('duiba_render').addEventListener('click', function(){
+        // renderMenu often expects a JSON argument
+        try{ safeDuibaTry('renderMenu', ['{}']); }catch(e){ log('renderMenu ERROR: ' + e); }
+      });
+
+      document.getElementById('duiba_launch_preset').addEventListener('click', function(){
+        const preset = JSON.stringify({linkType:'NATIVE',linkUrl:'app://example',multiplePackages:[]}, null, 2);
+        document.getElementById('duiba_launch_input').value = preset;
+        log('Inserted preset payload (harmless example).');
+      });
+
+      document.getElementById('duiba_launch').addEventListener('click', function(){
+        try{
+          const payload = document.getElementById('duiba_launch_input').value || '';
+          if(!payload.trim()){ if(!confirm('Payload empty. Are you sure you want to call launchActivity with an empty string?')) return; }
+          // Confirm explicit consent because this may start activities or show UX
+          if(!confirm('Confirm: call duiba_app.launchActivity with the pasted JSON? Only run on test devices.')) return;
+          safeDuibaTry('launchActivity', [payload]);
+          log('launchActivity invoked (check logcat for resulting intents / activity starts).');
+        }catch(e){ log('duiba_launch ERROR: ' + e); }
+      });
     })();
   </script>
 </body>
