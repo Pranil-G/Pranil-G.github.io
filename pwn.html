@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WebView JS Bridge Probe</title>
+  <style>body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial;margin:16px}pre{white-space:pre-wrap;word-wrap:break-word;background:#111;color:#dcdcdc;padding:12px;border-radius:6px}</style>
+</head>
+<body>
+  <h2>WebView JS Bridge Probe</h2>
+  <p>This page probes for common JS bridge objects used by the app and logs results below. It does not send data anywhere.</p>
+  <button id="run">Run Probe</button>
+  <pre id="out">Ready. Click “Run Probe”.
+</pre>
+
+  <script>
+    (function(){
+      const out = document.getElementById('out');
+      function log(...args){
+        out.textContent += '\n' + args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+      }
+
+      // Known bridge names found previously in the codebase
+      const BRIDGES = [
+        'OppoStoreClientBaseJS',
+        'OppoStoreClientUserJS',
+        'OppoStoreClientStoreJS',
+        'OppoStoreClientUiJS',
+        'OppoStoreClientAnalyticsJs',
+        'OppoStoreClientDeviceJS',
+        'HeytapNativeApi',
+        'JSNewInterface',
+        'duiba_app',
+        'App_Js_Bridge',
+        'ReactNativeWebView',
+        'YouTubePlayerBridge'
+      ];
+
+      // Methods to try for each bridge (best-effort; calling some may trigger actions)
+      const COMMON_METHODS = [
+        'getToken','getAccessToken','getUserId','getOpenId','getPublicParameters','getAndroidID','getDeviceUUID','getInfo','getAppVersionName','getAppVersionCode'
+      ];
+
+      function safeCall(obj, name){
+        try{
+          const fn = obj[name];
+          if(typeof fn === 'function'){
+            try{
+              const r = fn.length === 0 ? fn() : fn(); // try synchronous call
+              return {ok:true, type: typeof r, value: r};
+            }catch(e){
+              return {ok:false, error: String(e)};
+            }
+          }
+          return {ok:false, error: 'not a function'};
+        }catch(e){
+          return {ok:false, error: String(e)};
+        }
+      }
+
+      function probeAll(){
+        out.textContent = 'Probing...\n';
+        BRIDGES.forEach(name => {
+          try{
+            const obj = window[name] || window[name.replace(/\W/g,'')];
+            if(!obj){
+              log(name + ': NOT FOUND');
+              return;
+            }
+            log('--- ' + name + ' FOUND ---');
+            log('typeof: ' + typeof obj);
+
+            // list own properties
+            try{
+              const props = Object.keys(obj || {}).slice(0,200);
+              log('properties ('+props.length+'):', props.join(', '));
+            }catch(e){ log('properties: failed to list: ' + e); }
+
+            // try some common getters
+            COMMON_METHODS.forEach(m => {
+              if(m in obj){
+                const res = safeCall(obj, m);
+                if(res.ok){
+                  log(m + ' => ' + (res.value === undefined ? '(undefined)' : String(res.value)) );
+                } else {
+                  log(m + ' => ERROR: ' + res.error);
+                }
+              } else {
+                // try lowercase/alternate names
+                const alt = Object.keys(obj).find(k => k.toLowerCase() === m.toLowerCase());
+                if(alt){
+                  const res = safeCall(obj, alt);
+                  log(alt + ' (alt for ' + m + ') => ' + (res.ok ? String(res.value) : ('ERROR: ' + res.error)));
+                }
+              }
+            });
+
+            // Report callable functions (limit)
+            try{
+              const fns = Object.keys(obj).filter(k => typeof obj[k] === 'function').slice(0,40);
+              log('functions sample ('+fns.length+'):', fns.join(', '));
+            }catch(e){ log('functions: failed to list: ' + e); }
+
+          }catch(e){
+            log(name + ': probe exception: ' + e);
+          }
+        });
+        log('\nProbe finished.');
+      }
+
+      document.getElementById('run').addEventListener('click', probeAll);
+
+      // Optionally run on load
+      // window.addEventListener('load', probeAll);
+    })();
+  </script>
+</body>
+</html>
