@@ -1,28 +1,77 @@
 <!doctype html>
-<html>
-  <head><meta charset="utf-8"><title>Bridge probe</title></head>
-  <body>
-    <h2>Bridge probe</h2>
-    <pre id="out">waiting...</pre>
-    <script>
-      function show(msg){ document.getElementById('out').textContent = msg; }
-      function tryBridge() {
-        try {
-          if (window.appJsBridge && typeof window.appJsBridge.callApi === 'function') {
-            // Call a benign method that exists in BrowserPrivateJsObject (adjust name if needed)
-            window.appJsBridge.callApi('BrowserPriv.getUserAgent', {}, function(resp){
-              show('bridge returned: ' + JSON.stringify(resp));
-            }, function(err){
-              show('bridge error: ' + JSON.stringify(err));
-            });
-          } else {
-            show('bridge not present (window.appJsBridge missing).');
-          }
-        } catch (e) {
-          show('exception: ' + e);
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AppJsBridge probe</title>
+</head>
+<body>
+  <h1>AppJsBridge probe</h1>
+  <p>Open the WebView/devtools console to see probe logs (console messages prefixed with [probe]).</p>
+  <script>
+  (function(){
+    const MAX_MS = 10000; // 10s timeout
+    const INTERVAL = 300; // poll interval
+    let elapsed = 0;
+    function log(){ try{ console.log.apply(console, ['[probe]'].concat(Array.prototype.slice.call(arguments))); } catch(e){} }
+
+    function tryGetApis(){
+      try{
+        if(window.appJsBridge && typeof window.appJsBridge.getAvailableApis === 'function'){
+          try{
+            const apis = window.appJsBridge.getAvailableApis();
+            log('getAvailableApis() =>', apis);
+          } catch(e){ log('getAvailableApis() threw', e); }
+        } else {
+          log('appJsBridge present but getAvailableApis() not available');
         }
+      } catch(err){ log('error calling getAvailableApis', err); }
+    }
+
+    function check(){
+      if(window.appJsBridge){
+        log('bridge FOUND at', new Date().toISOString());
+        tryGetApis();
+        // also log presence of common helpers
+        try{ log('has callApi?', !!(window.appJsBridge.callApi)); } catch(e){}
+        done(true);
+        return;
       }
-      window.addEventListener('load', tryBridge);
-    </script>
-  </body>
+      elapsed += INTERVAL;
+      if(elapsed >= MAX_MS){
+        log('bridge NOT FOUND after', MAX_MS, 'ms; will continue listening for JsBridgeReady event if it fires');
+        done(false);
+        return;
+      }
+      setTimeout(check, INTERVAL);
+    }
+
+    function onJsBridgeReady(evt){
+      log('DOM event JsBridgeReady received at', new Date().toISOString());
+      // re-check immediately when the event arrives
+      setTimeout(check, 0);
+    }
+
+    function done(found){
+      const summary = document.createElement('pre');
+      summary.style.whiteSpace = 'pre-wrap';
+      summary.textContent = '[probe] finished. found=' + found + '\nCheck the console output for details.';
+      document.body.appendChild(summary);
+      // keep page alive so you can inspect console
+    }
+
+    // Some bridge implementations push pending callbacks into window.bridgePendingCallbacks before injection completes.
+    window.bridgePendingCallbacks = window.bridgePendingCallbacks || [];
+    window.bridgePendingCallbacks.push(function(bridge){
+      try{ log('bridgePendingCallbacks invoked, bridge=', bridge); if(bridge && bridge.getAvailableApis) log('bridge.getAvailableApis() =>', bridge.getAvailableApis()); } catch(e){ log('bridgePendingCallbacks handler error', e); }
+    });
+
+    // Listen for JsBridgeReady dispatched by the injected bootstrap script
+    document.addEventListener('JsBridgeReady', onJsBridgeReady, false);
+
+    // Start quick poll
+    setTimeout(check, 50);
+  })();
+  </script>
+</body>
 </html>
