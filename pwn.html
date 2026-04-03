@@ -27,6 +27,25 @@ if (typeof BridgeCommonApi !== 'undefined') {
     tryCall('getAppInfo', () => BridgeCommonApi.getAppInfo());
     tryCall('isLogin', () => BridgeCommonApi.isLogin());
     tryCall('vibrate', () => BridgeCommonApi.vibrate(50));
+
+    // showDialog check
+    try {
+        const dialogModel = {
+            title: 'PoC',
+            message: 'BridgeCommonApi.showDialog test',
+            positiveText: 'OK',
+            negativeText: 'Cancel'
+        };
+        const callback = {
+            onProgress: function(msg){ log('showDialog progress: ' + msg); },
+            onCompleted: function(result){ log('showDialog completed: ' + JSON.stringify(result)); },
+            onRemove: function(){ log('showDialog removed'); }
+        };
+        BridgeCommonApi.showDialog(dialogModel, callback);
+        log('showDialog invoked');
+    } catch (e) {
+        log('showDialog error: ' + e);
+    }
 } else {
     log('BridgeCommonApi NOT available');
 }
