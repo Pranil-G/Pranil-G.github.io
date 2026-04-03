@@ -26,7 +26,7 @@ if (typeof BridgeCommonApi !== 'undefined') {
     tryCall('getDeviceInfo', () => BridgeCommonApi.getDeviceInfo());
     tryCall('getAppInfo', () => BridgeCommonApi.getAppInfo());
     tryCall('isLogin', () => BridgeCommonApi.isLogin());
-    // Do not call destructive APIs.
+    tryCall('vibrate', () => BridgeCommonApi.vibrate(50));
 } else {
     log('BridgeCommonApi NOT available');
 }
