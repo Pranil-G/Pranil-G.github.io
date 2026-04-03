@@ -27,25 +27,17 @@ if (typeof BridgeCommonApi !== 'undefined') {
     tryCall('getAppInfo', () => BridgeCommonApi.getAppInfo());
     tryCall('isLogin', () => BridgeCommonApi.isLogin());
     tryCall('vibrate', () => BridgeCommonApi.vibrate(50));
-
-    // showDialog check
-    try {
-        const dialogModel = {
-            title: 'PoC',
-            message: 'BridgeCommonApi.showDialog test',
-            positiveText: 'OK',
-            negativeText: 'Cancel'
+    tryCall('showToast', () => { BridgeCommonApi.showToast("PoC toast done", 0); return true; });
+    tryCall('showDialog', () => {
+        const model = { title:'PoC', message:'Native dialog test', positiveText:'OK', negativeText:'Cancel' };
+        const cb = {
+            onProgress: (msg)=>log('dlg progress:'+msg),
+            onCompleted: (r)=>log('dlg completed:'+JSON.stringify(r)),
+            onRemove: ()=>log('dlg removed')
         };
-        const callback = {
-            onProgress: function(msg){ log('showDialog progress: ' + msg); },
-            onCompleted: function(result){ log('showDialog completed: ' + JSON.stringify(result)); },
-            onRemove: function(){ log('showDialog removed'); }
-        };
-        BridgeCommonApi.showDialog(dialogModel, callback);
-        log('showDialog invoked');
-    } catch (e) {
-        log('showDialog error: ' + e);
-    }
+        BridgeCommonApi.showDialog(model, cb);
+        return 'invoked';
+    });
 } else {
     log('BridgeCommonApi NOT available');
 }
